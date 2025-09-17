@@ -1,36 +1,21 @@
-from flask import Flask, request, jsonify
-from database.db_init import init_db
-from llm.gpt4all_wrapper import ask_agent
+from flask import Flask
+# Import DB_PATH as well, so we can pass it to our routes
+from .database.db_init import init_db, DB_PATH
+from .routes import register_routes
 
-app = Flask(__name__)
+# Correct the paths to your templates and static folders
+app = Flask(__name__, template_folder='../../templates', static_folder='../../static')
+
+# Add the database path to the app's configuration.
+# This allows our routes in the other file to access the path reliably.
+app.config['DATABASE_PATH'] = DB_PATH
 
 # Initialize database
 init_db()
 
-
-# Simple Hello World route
-@app.route("/hello", methods=["GET"])
-def hello():
-    return jsonify({"message": "Hello World! SAS Agent backend running ✅"})
-
-
-# homepage index page
-@app.route("/", methods=["GET"])
-def home():
-    return "<h2>SAS Agent Backend Running ✅ Go to /hello or use POST /chat</h2>"
-
-
-# Basic chat route (GPT4All)
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.json
-    prompt = data.get("prompt", "")
-    
-    if not prompt:
-        return jsonify({"error": "No prompt provided"}), 400
-    
-    response = ask_agent(prompt)
-    return jsonify({"response": response})
+# Register all routes from routes/__init__.py
+register_routes(app)
 
 if __name__ == "__main__":
+    print(app.url_map)  # Debug: shows all registered routes
     app.run(debug=True)

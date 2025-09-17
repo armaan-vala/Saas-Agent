@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 print("DEBUG: BASE_DIR =", BASE_DIR)
 
 # Model path (pointing to mistral gguf file)
-MODEL_FILE = BASE_DIR / "models" / "mistral-7b-instruct-v0.1.Q4_0.gguf"
+MODEL_FILE = BASE_DIR / "models" / "phi-2.Q4_0.gguf"
 print("DEBUG: MODEL_FILE =", MODEL_FILE)
 print("DEBUG: MODEL exists =", MODEL_FILE.exists())
 
