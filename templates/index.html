@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAS Agent - AI Agents Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🤖 SAS Agent</h1>
+            <p>Create custom AI agents with domain knowledge</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <button class="btn btn-primary" onclick="window.location.href='/create-agent'">
+                    ➕ Create New Agent
+                </button>
+                <button class="btn btn-secondary" onclick="testConnection()">
+                    🔗 Test Connection
+                </button>
+            </div>
+
+            <!-- Agents List -->
+            <div class="agents-section">
+                <h2>Your AI Agents</h2>
+                <div id="agents-container">
+                    <div class="loading">Loading agents...</div>
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div id="status-message" class="status-message"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Load agents on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAgents();
+        });
+
+        async function testConnection() {
+            try {
+                showStatus('Testing connection...', 'info');
+                const response = await fetch('/hello');
+                const text = await response.text();
+                showStatus('✅ Backend connected: ' + text, 'success');
+            } catch (error) {
+                showStatus('❌ Connection failed: ' + error.message, 'error');
+            }
+        }
+
+
+
+        async function loadAgents() {
+            const container = document.getElementById('agents-container');
+            try {
+                // Use the getAgents function from app.js which fetches from the live endpoint
+                const agents = await getAgents(); // This now calls GET /api/agents
+                displayAgents(agents);
+            } catch (error) {
+                console.error('Failed to load agents:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Error loading agents</h3>
+                        <p>Could not fetch agents from the backend. Please ensure the server is running.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displayAgents(agents) {
+            const container = document.getElementById('agents-container');
+            
+            if (agents.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No agents found</h3>
+                        <p>Create your first AI agent to get started!</p>
+                        <button class="btn btn-primary" onclick="window.location.href='/create-agent'">
+                            Create Agent
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = agents.map(agent => `
+                <div class="agent-card">
+                    <div class="agent-info">
+                        <h3>${agent.name}</h3>
+                        <p>${agent.description || 'No description'}</p>
+                    </div>
+                    <div class="agent-actions">
+                        <button class="btn btn-primary" onclick="openChat(${agent.id}, '${agent.name}')">
+                            💬 Chat
+                        </button>
+                        <button class="btn btn-secondary" onclick="uploadDocument(${agent.id})">
+                            📁 Upload Docs
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openChat(agentId, agentName) {
+            window.location.href = `/chat?agent_id=${agentId}&agent_name=${encodeURIComponent(agentName)}`;
+        }
+
+        function uploadDocument(agentId) {
+            // For now, redirect to chat page with upload focus
+            window.location.href = `/chat?agent_id=${agentId}&focus=upload`;
+        }
+    </script>
+</body>
+</html>

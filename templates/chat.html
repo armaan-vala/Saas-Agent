@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - SAS Agent</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container chat-container">
+        <header class="chat-header">
+            <div class="agent-info">
+                <h1 id="agent-name">🤖 Agent Chat</h1>
+                <a href="/" class="back-link">← Back to Home</a>
+            </div>
+            <div class="chat-actions">
+                <button class="btn btn-secondary" id="manage-docs-btn">
+                    📚 Knowledge Base
+                </button>
+                <button class="btn btn-secondary" id="upload-doc-btn">
+                    📁 Upload Document
+                </button>
+                <button class="btn btn-outline" id="clear-chat-btn">
+                    🗑️ Clear Chat
+                </button>
+            </div>
+        </header>
+
+        <div id="upload-section" class="upload-section" style="display: none;">
+            <button class="modal-close-btn" id="close-upload-btn">&times;</button>
+            <div class="upload-container">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="file-upload-area">
+                        <input type="file" id="file-input" name="file" accept=".txt,.pdf,.md" required>
+                        <label for="file-input" class="file-upload-label">
+                            <div class="upload-icon">📄</div>
+                            <div class="upload-text">
+                                <strong>Choose a file</strong> or drag & drop
+                                <br><small>Supported: TXT, PDF, MD</small>
+                            </div>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        ⬆️ Upload & Process
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-container">
+            <form id="chat-form" class="chat-input-form">
+                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off" required>
+                <button type="submit" class="send-button"><span class="send-icon">➤</span></button>
+            </form>
+        </div>
+        <div id="status-message" class="status-message"></div>
+    </div>
+
+    <div class="modal-overlay" id="documents-modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Agent Knowledge Base</h2>
+                <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="documents-list" id="documents-list-container"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- 1. GET ELEMENTS ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const agentId = urlParams.get('agent_id');
+        const agentName = urlParams.get('agent_name') || 'AI Agent';
+
+        const knowledgeBaseBtn = document.getElementById('manage-docs-btn');
+        const modalOverlay = document.getElementById('documents-modal-overlay');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const documentsListContainer = document.getElementById('documents-list-container');
+        const fileInput = document.getElementById('file-input');
+        const uploadLabelText = document.querySelector('.file-upload-label .upload-text');
+        const closeUploadBtn = document.getElementById('close-upload-btn');
+        const chatForm = document.getElementById('chat-form');
+        const uploadForm = document.getElementById('upload-form');
+        const messageInput = document.getElementById('message-input');
+        const uploadDocBtn = document.getElementById('upload-doc-btn');
+        const clearChatBtn = document.getElementById('clear-chat-btn');
+        const messagesContainer = document.getElementById('chat-messages');
+
+        // --- 2. DEFINE FUNCTIONS ---
+        async function showDocumentsModal() {
+            if (!agentId) return;
+            modalOverlay.classList.add('visible');
+            documentsListContainer.innerHTML = '<div class="loading">Loading documents...</div>';
+            try {
+                const response = await fetch(`/api/agent/${agentId}/documents`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const documents = await response.json();
+                if (documents.length === 0) {
+                    documentsListContainer.innerHTML = '<p>No documents have been uploaded for this agent yet.</p>';
+                } else {
+                    let documentsHTML = '';
+                    documents.forEach(doc => {
+                        documentsHTML += `<div class="document-item" id="doc-item-${doc.id}"><span>${doc.filename}</span><button class="delete-btn" data-doc-id="${doc.id}" title="Delete document">🗑️</button></div>`;
+                    });
+                    documentsListContainer.innerHTML = documentsHTML;
+                }
+            } catch (error) {
+                console.error("Failed to fetch documents:", error);
+                documentsListContainer.innerHTML = '<p style="color: red;">Could not load documents.</p>';
+            }
+        }
+
+        async function loadChatHistory() {
+            if (!agentId) {
+                messagesContainer.innerHTML = `<div class="welcome-message"><div class="message agent-message"><div class="message-content"><p>Invalid Agent. Please go back to the homepage and select an agent.</p></div></div></div>`;
+                return;
+            }
+            try {
+                const response = await fetch(`/api/agent/${agentId}/history`);
+                if (!response.ok) throw new Error('Failed to fetch history');
+                const history = await response.json();
+                if (history.length === 0) {
+                    messagesContainer.innerHTML = `<div class="welcome-message"><div class="message agent-message"><div class="message-content"><p>👋 Hello! I'm ${agentName}. Upload a document to give me knowledge, then ask me questions!</p></div></div></div>`;
+                } else {
+                    messagesContainer.innerHTML = '';
+                    history.forEach(messagePair => {
+                        if (messagePair.user_message) addMessage(messagePair.user_message, 'user');
+                        if (messagePair.agent_response) addMessage(messagePair.agent_response, 'agent');
+                    });
+                }
+            } catch (error) { 
+                console.error("Error loading chat history:", error);
+                messagesContainer.innerHTML = `<div class="message error-message"><div class="message-content">Could not load chat history. Please check the server connection and refresh.</div></div>`;
+            }
+        }
+        
+        function addMessage(content, type, sources = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            let messageHTML = `<div class="message-content">${formatMessage(content)}</div>`;
+            if (sources && sources.length > 0) {
+                messageHTML += `<div class="message-sources"><strong>Sources:</strong>`;
+                sources.forEach(source => { messageHTML += `<span class="source-tag">${source.filename}</span>`; });
+                messageHTML += '</div>';
+            }
+            messageDiv.innerHTML = messageHTML;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return messageDiv;
+        }
+
+        function formatMessage(content) { return content.replace(/\n/g, '<br>'); }
+        
+        function addTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            const id = 'typing-' + Date.now();
+            typingDiv.id = id;
+            typingDiv.className = 'message agent-message typing-indicator';
+            typingDiv.innerHTML = `<div class="message-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+            messagesContainer.appendChild(typingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return id;
+        }
+        
+        function removeTypingIndicator(id) {
+            const element = document.getElementById(id);
+            if (element) { element.remove(); }
+        }
+
+        function toggleUpload() {
+            const uploadSection = document.getElementById('upload-section');
+            const isVisible = uploadSection.style.display !== 'none';
+            uploadSection.style.display = isVisible ? 'none' : 'block';
+        }
+
+        function clearChat() {
+            if (confirm('Are you sure you want to clear the chat history on screen?')) {
+                loadChatHistory();
+            }
+        }
+
+        // --- 3. ATTACH EVENT LISTENERS ---
+        knowledgeBaseBtn.addEventListener('click', showDocumentsModal);
+        modalCloseBtn.addEventListener('click', () => modalOverlay.classList.remove('visible'));
+        modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) { modalOverlay.classList.remove('visible'); } });
+        uploadDocBtn.addEventListener('click', toggleUpload);
+        clearChatBtn.addEventListener('click', clearChat);
+        
+        documentsListContainer.addEventListener('click', async (e) => {
+            if (e.target && e.target.classList.contains('delete-btn')) {
+                const docId = e.target.getAttribute('data-doc-id');
+                if (confirm('Are you sure you want to permanently delete this document?')) {
+                    try {
+                        const response = await fetch(`/api/document/${docId}`, { method: 'DELETE' });
+                        if (response.ok) {
+                            const itemToRemove = document.getElementById(`doc-item-${docId}`);
+                            if (itemToRemove) itemToRemove.remove();
+                            showStatus('✅ Document deleted successfully!', 'success');
+                        } else {
+                            const result = await response.json();
+                            showStatus(`❌ Error: ${result.error || 'Could not delete'}`, 'error');
+                        }
+                    } catch (error) { showStatus('❌ Network error while deleting.', 'error'); }
+                }
+            }
+        });
+        
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                uploadLabelText.innerHTML = `<strong>Selected:</strong> ${fileInput.files[0].name}`;
+            } else {
+                uploadLabelText.innerHTML = '<strong>Choose a file</strong> or drag & drop<br><small>Supported: TXT, PDF, MD</small>';
+            }
+        });
+        
+        closeUploadBtn.addEventListener('click', toggleUpload);
+        
+        chatForm.addEventListener('submit', async function(e) { 
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (!message || !agentId) return;
+            messageInput.value = '';
+            addMessage(message, 'user');
+            const typingId = addTypingIndicator();
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent_id: agentId, query: message })
+                });
+                const result = await response.json();
+                removeTypingIndicator(typingId);
+                if (response.ok) {
+                    addMessage(result.response, 'agent', result.sources);
+                } else {
+                    addMessage('❌ Error: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                removeTypingIndicator(typingId);
+                addMessage('❌ Connection error: ' + error.message, 'error');
+            }
+            messageInput.focus();
+        });
+        
+        uploadForm.addEventListener('submit', async function(e) { 
+            e.preventDefault();
+            const file = fileInput.files[0];
+            if (!file || !agentId) return;
+            const formData = new FormData();
+            formData.append('agent_id', agentId);
+            formData.append('file', file);
+            try {
+                showStatus('Uploading and processing document...', 'info');
+                const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                if (response.ok) {
+                    const result = await response.json();
+                    showStatus('✅ Document uploaded successfully!', 'success');
+                    addMessage(`📁 Uploaded: ${file.name}`, 'system');
+                    fileInput.value = '';
+                    uploadLabelText.innerHTML = '<strong>Choose a file</strong> or drag & drop<br><small>Supported: TXT, PDF, MD</small>';
+                    setTimeout(toggleUpload, 500);
+                } else {
+                    const result = await response.json();
+                    showStatus(`❌ Upload failed: ${result.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Upload error: ' + error.message, 'error');
+            }
+        });
+
+        // --- 4. RUN INITIAL SETUP ---
+        document.getElementById('agent-name').textContent = `🤖 ${agentName}`;
+        if (urlParams.get('focus') === 'upload') {
+            toggleUpload();
+        }
+        loadChatHistory();
+        messageInput.focus();
+    });
+    </script>
+</body>
+</html>
